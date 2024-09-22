@@ -3,7 +3,7 @@
 #include <random>
 #include <chrono>
 #include <time.h>
-
+#include <omp.h>
 // Your task is to create a program that unlocks a 3D cube.
 // The cube is made up of cells that can either be "locked" or "unlocked." 
 // When you click on a cell, it changes its state, and all other cells 
@@ -126,16 +126,20 @@ LockCube::LockCube()
     }
 }
 
-// Function to apply Gaussian elimination (mod 2)
-void gaussianElimination(std::vector<std::vector<int>>& matrix, std::vector<int>& solution)
+void gaussianElimination(std::vector<std::vector<uint64_t>>& matrix, std::vector<uint64_t>& solution)
 {
     int n = matrix.size();    // Number of equations
     int m = matrix[0].size(); // Number of variables
 
-    // Perform Gaussian elimination (mod 2)
+    auto start = std::chrono::high_resolution_clock::now();
+
+    // Perform Gaussian elimination(mod 2)
     for (int col = 0; col < m; ++col)
     {
         int pivot = -1;
+
+
+
         // Find a row with a leading 1 in this column
         for (int row = col; row < n; ++row)
         {
@@ -154,7 +158,7 @@ void gaussianElimination(std::vector<std::vector<int>>& matrix, std::vector<int>
 
         // Swap pivot row with current row
         std::swap(matrix[pivot], matrix[col]);
-
+#pragma omp parallel for
         // Eliminate all other 1's in this column
         for (int row = 0; row < n; ++row)
         {
@@ -163,12 +167,16 @@ void gaussianElimination(std::vector<std::vector<int>>& matrix, std::vector<int>
                 // XOR the current row with the pivot row to eliminate the 1
                 for (int k = col; k < m; ++k)
                 {
-                    matrix[row][k] ^= matrix[col][k];
+                    matrix[row][k] ^= matrix[col][k]; // Perform XOR operation
                 }
             }
         }
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    std::cout << "Time taken For1: " << elapsed.count() << " milliseconds\n";
     // Extract the solution from the reduced matrix
     for (int row = 0; row < n; ++row)
     {
@@ -188,8 +196,8 @@ void unlock(LockCube& cube)
     int numCells = x_size * y_size * z_size;
 
     // Matrix to represent the cube and the click operations
-    std::vector<std::vector<int>> matrix(numCells, std::vector<int>(numCells + 1, 0)); // Extra column for RHS
-    std::vector<int> solution(numCells, 0);
+    std::vector<std::vector<uint64_t>> matrix(numCells, std::vector<uint64_t>(numCells + 1, 0)); // Extra column for RHS
+    std::vector<uint64_t> solution(numCells, 0);
 
     // Fill the matrix with the toggling rules (click propagation) and the current cube state
     for (uint64_t x = 0; x < x_size; ++x)
@@ -269,7 +277,8 @@ int main()
     auto elapsedcube = std::chrono::duration_cast<std::chrono::milliseconds>(endcube - startcube);
 
     std::cout << "Time taken to create the cube: " << elapsedcube.count() << " milliseconds\n";
-
+    auto sizeOfCube = cube.read();
+    std::cout << "Size: " << sizeOfCube.size() << "\n";
 
     auto start = std::chrono::high_resolution_clock::now();
     unlock(cube);
