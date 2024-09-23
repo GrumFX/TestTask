@@ -25,7 +25,7 @@ class LockCube
 public:
 
     static const uint64_t cube_ax_min_size = 10;
-    static const uint64_t cube_ax_max_size = 30;
+    static const uint64_t cube_ax_max_size = 100;
     static const uint64_t cube_lock_frq = 3;
 
     LockCube();
