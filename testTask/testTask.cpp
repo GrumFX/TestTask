@@ -234,7 +234,6 @@ void unlock(LockCube& cube)
 
         if (sel == N)
         {
-
             continue;
         }
 
