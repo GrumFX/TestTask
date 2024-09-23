@@ -2,8 +2,11 @@
 #include <vector>
 #include <random>
 #include <chrono>
-#include <time.h>
+#include <bitset>
+#include <unordered_map>
+#include <cstdint>
 #include <omp.h>
+
 // Your task is to create a program that unlocks a 3D cube.
 // The cube is made up of cells that can either be "locked" or "unlocked." 
 // When you click on a cell, it changes its state, and all other cells 
@@ -22,7 +25,7 @@ class LockCube
 public:
 
     static const uint64_t cube_ax_min_size = 10;
-    static const uint64_t cube_ax_max_size = 15;
+    static const uint64_t cube_ax_max_size = 30;
     static const uint64_t cube_lock_frq = 3;
 
     LockCube();
@@ -126,164 +129,174 @@ LockCube::LockCube()
     }
 }
 
-void gaussianElimination(std::vector<std::vector<uint64_t>>& matrix, std::vector<uint64_t>& solution)
+struct BitRow
 {
-    int n = matrix.size();    // Number of equations
-    int m = matrix[0].size(); // Number of variables
+    std::vector<uint64_t> bits;
 
-    auto start = std::chrono::high_resolution_clock::now();
-
-    // Perform Gaussian elimination(mod 2)
-    for (int col = 0; col < m; ++col)
+    BitRow(size_t num_bits)
     {
-        int pivot = -1;
-
-
-
-        // Find a row with a leading 1 in this column
-        for (int row = col; row < n; ++row)
-        {
-            if (matrix[row][col] == 1)
-            {
-                pivot = row;
-                break;
-            }
-        }
-
-        if (pivot == -1)
-        {
-            // No pivot found, column is already "solved"
-            continue;
-        }
-
-        // Swap pivot row with current row
-        std::swap(matrix[pivot], matrix[col]);
-#pragma omp parallel for
-        // Eliminate all other 1's in this column
-        for (int row = 0; row < n; ++row)
-        {
-            if (row != col && matrix[row][col] == 1)
-            {
-                // XOR the current row with the pivot row to eliminate the 1
-                for (int k = col; k < m; ++k)
-                {
-                    matrix[row][k] ^= matrix[col][k]; // Perform XOR operation
-                }
-            }
-        }
+        bits.resize((num_bits + 63) / 64, 0);
     }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    std::cout << "Time taken For1: " << elapsed.count() << " milliseconds\n";
-    // Extract the solution from the reduced matrix
-    for (int row = 0; row < n; ++row)
+    void set_bit(size_t pos)
     {
-        solution[row] = matrix[row][m - 1]; // Last column contains the solution
+        bits[pos / 64] |= (1ULL << (pos % 64));
     }
+
+    void set_bit(size_t pos, bool value)
+    {
+        if (value)
+            bits[pos / 64] |= (1ULL << (pos % 64));
+        else
+            bits[pos / 64] &= ~(1ULL << (pos % 64));
+    }
+
+    bool get_bit(size_t pos) const
+    {
+        return (bits[pos / 64] >> (pos % 64)) & 1ULL;
+    }
+
+    void xor_with(const BitRow& other)
+    {
+        for (size_t i = 0; i < bits.size(); ++i)
+        {
+            bits[i] ^= other.bits[i];
+        }
+    }
+};
+
+inline uint64_t coord_to_index(uint64_t x, uint64_t y, uint64_t z, uint64_t y_size, uint64_t z_size)
+{
+    return x * y_size * z_size + y * z_size + z;
 }
 
-// Unlock function for solving the cube using XOR logic
 void unlock(LockCube& cube)
 {
     auto state = cube.read();
     uint64_t x_size = state.size();
+    if (x_size == 0) return;
     uint64_t y_size = state[0].size();
+    if (y_size == 0) return;
     uint64_t z_size = state[0][0].size();
+    if (z_size == 0) return;
 
-    // Number of cells in the cube
-    int numCells = x_size * y_size * z_size;
+    uint64_t N = x_size * y_size * z_size;
 
-    // Matrix to represent the cube and the click operations
-    std::vector<std::vector<uint64_t>> matrix(numCells, std::vector<uint64_t>(numCells + 1, 0)); // Extra column for RHS
-    std::vector<uint64_t> solution(numCells, 0);
+    std::vector<BitRow> augmented(N, BitRow(N + 1));
 
-    // Fill the matrix with the toggling rules (click propagation) and the current cube state
-    for (uint64_t x = 0; x < x_size; ++x)
+    for (uint64_t x = 0; x < x_size; x++)
     {
-        for (uint64_t y = 0; y < y_size; ++y)
+        for (uint64_t y = 0; y < y_size; y++)
         {
-            for (uint64_t z = 0; z < z_size; ++z)
+            for (uint64_t z = 0; z < z_size; z++)
             {
-                int cellIndex = x * y_size * z_size + y * z_size + z;
+                uint64_t row_idx = coord_to_index(x, y, z, y_size, z_size);
 
-                // Set up the row in the matrix representing the effect of clicking this cell
-                matrix[cellIndex][cellIndex] = 1; // Clicking itself
-
-                // Affecting the cells in the same row, column, and depth
-                for (uint64_t xi = 0; xi < x_size; ++xi)
+                for (uint64_t i = 0; i < x_size; i++)
                 {
-                    if (xi != x)
-                    {
-                        int rowCellIndex = xi * y_size * z_size + y * z_size + z;
-                        matrix[cellIndex][rowCellIndex] = 1; // Affect the cell in the same row
-                    }
+                    uint64_t var_idx = coord_to_index(i, y, z, y_size, z_size);
+                    augmented[row_idx].set_bit(var_idx);
+                }
+                for (uint64_t j = 0; j < y_size; j++)
+                {
+                    uint64_t var_idx = coord_to_index(x, j, z, y_size, z_size);
+                    augmented[row_idx].set_bit(var_idx);
+                }
+                for (uint64_t k = 0; k < z_size; k++)
+                {
+                    uint64_t var_idx = coord_to_index(x, y, k, y_size, z_size);
+                    augmented[row_idx].set_bit(var_idx);
                 }
 
-                for (uint64_t yi = 0; yi < y_size; ++yi)
+                if (state[x][y][z])
                 {
-                    if (yi != y)
-                    {
-                        int colCellIndex = x * y_size * z_size + yi * z_size + z;
-                        matrix[cellIndex][colCellIndex] = 1; // Affect the cell in the same column
-                    }
-                }
-
-                for (uint64_t zi = 0; zi < z_size; ++zi)
-                {
-                    if (zi != z)
-                    {
-                        int depthCellIndex = x * y_size * z_size + y * z_size + zi;
-                        matrix[cellIndex][depthCellIndex] = 1; // Affect the cell in the same depth
-                    }
-                }
-
-                // Set the right-hand side to the current cube state (locked or unlocked)
-                matrix[cellIndex][numCells] = state[x][y][z];
-            }
-        }
-    }
-
-    // Perform Gaussian elimination (mod 2) to find the solution
-    gaussianElimination(matrix, solution);
-
-    // Apply the clicks found in the solution to the cube
-    for (uint64_t x = 0; x < x_size; ++x)
-    {
-        for (uint64_t y = 0; y < y_size; ++y)
-        {
-            for (uint64_t z = 0; z < z_size; ++z)
-            {
-                int cellIndex = x * y_size * z_size + y * z_size + z;
-
-                // If the solution for this cell is 1, we need to click it
-                if (solution[cellIndex] == 1)
-                {
-                    cube.click(x, y, z);
+                    augmented[row_idx].set_bit(N, true); 
                 }
             }
         }
     }
 
-    std::cout << "Cube unlocked using XOR logic.\n";
+    size_t rank = 0;
+    std::vector<size_t> pivot_cols;
+
+    for (size_t col = 0; col < N && rank < N; col++)
+    {
+        if (col % 1000 == 0)
+        {
+            std::cout << "Col: " << col << " from: " << N << std::endl;
+        }
+
+        size_t sel = rank;
+        while (sel < N && !augmented[sel].get_bit(col))
+        {
+            sel++;
+        }
+
+        if (sel == N)
+        {
+
+            continue;
+        }
+
+        if (sel != rank)
+        {
+            std::swap(augmented[sel], augmented[rank]);
+        }
+
+        pivot_cols.push_back(col);
+
+#pragma omp parallel for schedule(dynamic)
+        for (long long row = 0; row < N; row++)
+        {
+            if (row != rank && augmented[row].get_bit(col))
+            {
+#pragma omp critical
+                {
+                    augmented[row].xor_with(augmented[rank]);
+                }
+            }
+        }
+        rank++;
+    }
+
+    std::vector<bool> clicks(N, false);
+
+    for (int i = rank - 1; i >= 0; i--)
+    {
+        size_t col = pivot_cols[i];
+        bool val = augmented[i].get_bit(N);
+        for (size_t j = col + 1; j < N; j++)
+        {
+            if (augmented[i].get_bit(j))
+            {
+                val ^= clicks[j];
+            }
+        }
+        clicks[col] = val;
+    }
+
+    for (uint64_t idx = 0; idx < N; idx++)
+    {
+        if (clicks[idx])
+        {
+            uint64_t x = idx / (y_size * z_size);
+            uint64_t rem = idx % (y_size * z_size);
+            uint64_t y = rem / z_size;
+            uint64_t z = rem % z_size;
+            cube.click(x, y, z);
+        }
+    }
 }
+
 
 int main()
 {
-    auto startcube = std::chrono::high_resolution_clock::now();
     LockCube cube;
-    auto endcube = std::chrono::high_resolution_clock::now();
-    auto elapsedcube = std::chrono::duration_cast<std::chrono::milliseconds>(endcube - startcube);
-
-    std::cout << "Time taken to create the cube: " << elapsedcube.count() << " milliseconds\n";
-
     auto state = cube.read();
 
     std::cout << "Size x: " << state.size() << "\n";
     std::cout << "Size y: " << state[0].size() << "\n";
     std::cout << "Size z: " << state[0][0].size() << "\n";
-
     auto start = std::chrono::high_resolution_clock::now();
     unlock(cube);
     auto end = std::chrono::high_resolution_clock::now();
@@ -297,21 +310,5 @@ int main()
     else
         std::cout << "The cube is still locked!\n";
 
-    
-
-    // Iterate through every element in the 3D array of the cube
-    /*for (uint64_t x = 0; x < x_size; x++)
-    {
-        std::cout << std::endl;
-        for (uint64_t y = 0; y < y_size; y++)
-        {
-            std::cout << std::endl;
-            for (uint64_t z = 0; z < z_size; z++)
-            {
-                std::cout << state[x][y][z] << " ";
-
-            }
-        }
-    }*/
     return 0;
 }
