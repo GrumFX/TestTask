@@ -277,8 +277,12 @@ int main()
     auto elapsedcube = std::chrono::duration_cast<std::chrono::milliseconds>(endcube - startcube);
 
     std::cout << "Time taken to create the cube: " << elapsedcube.count() << " milliseconds\n";
-    auto sizeOfCube = cube.read();
-    std::cout << "Size: " << sizeOfCube.size() << "\n";
+
+    auto state = cube.read();
+
+    std::cout << "Size x: " << state.size() << "\n";
+    std::cout << "Size y: " << state[0].size() << "\n";
+    std::cout << "Size z: " << state[0][0].size() << "\n";
 
     auto start = std::chrono::high_resolution_clock::now();
     unlock(cube);
@@ -293,11 +297,7 @@ int main()
     else
         std::cout << "The cube is still locked!\n";
 
-    auto state = cube.read();
-
-    uint64_t x_size = state.size();
-    uint64_t y_size = state[0].size();
-    uint64_t z_size = state[0][0].size();
+    
 
     // Iterate through every element in the 3D array of the cube
     /*for (uint64_t x = 0; x < x_size; x++)
