@@ -135,7 +135,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BitRow.cpp" />
     <ClCompile Include="testTask.cpp" />
+    <ClCompile Include="UnlockSteps.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="BitRow.h" />
+    <ClInclude Include="UnlockSteps.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

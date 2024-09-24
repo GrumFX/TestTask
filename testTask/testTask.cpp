@@ -157,20 +157,19 @@ void unlock(LockCube& cube)
     }
 }
 
-
 int main()
 {
     LockCube cube;
-    auto state = cube.read();
 
+    auto state = cube.read();
     std::cout << "Size x: " << state.size() << "\n";
     std::cout << "Size y: " << state[0].size() << "\n";
     std::cout << "Size z: " << state[0][0].size() << "\n";
+
     auto start = std::chrono::high_resolution_clock::now();
     unlock(cube);
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
     std::cout << "Time taken to unlock the cube: " << elapsed.count() << " milliseconds\n";
 
     bool result = cube.isLock();
