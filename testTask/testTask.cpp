@@ -2,10 +2,8 @@
 #include <vector>
 #include <random>
 #include <chrono>
-#include <bitset>
-#include <unordered_map>
-#include <cstdint>
-#include <omp.h>
+#include <time.h>
+#include "UnlockSteps.h"
 
 // Your task is to create a program that unlocks a 3D cube.
 // The cube is made up of cells that can either be "locked" or "unlocked." 
@@ -133,106 +131,19 @@ void unlock(LockCube& cube)
 {
     auto state = cube.read();
     uint64_t x_size = state.size();
-    if (x_size == 0) return;
     uint64_t y_size = state[0].size();
-    if (y_size == 0) return;
     uint64_t z_size = state[0][0].size();
-    if (z_size == 0) return;
+
+    uint64_t cellCount = x_size * y_size * z_size;
+
+    std::vector<BitRow> augmentedMatrix = constructMatrix(state, cellCount, x_size, y_size, z_size);
+
+    std::vector<size_t> pivot_cols;
+    size_t rank = gaussianElimination(augmentedMatrix, cellCount, pivot_cols);
+
+    std::vector<bool> clicks = backSubstitution(augmentedMatrix, pivot_cols, rank, cellCount);
 
     uint64_t N = x_size * y_size * z_size;
-
-    std::vector<BitRow> augmented(N, BitRow(N + 1));
-
-    for (uint64_t x = 0; x < x_size; x++)
-    {
-        for (uint64_t y = 0; y < y_size; y++)
-        {
-            for (uint64_t z = 0; z < z_size; z++)
-            {
-                uint64_t row_idx = coord_to_index(x, y, z, y_size, z_size);
-
-                for (uint64_t i = 0; i < x_size; i++)
-                {
-                    uint64_t var_idx = coord_to_index(i, y, z, y_size, z_size);
-                    augmented[row_idx].set_bit(var_idx);
-                }
-                for (uint64_t j = 0; j < y_size; j++)
-                {
-                    uint64_t var_idx = coord_to_index(x, j, z, y_size, z_size);
-                    augmented[row_idx].set_bit(var_idx);
-                }
-                for (uint64_t k = 0; k < z_size; k++)
-                {
-                    uint64_t var_idx = coord_to_index(x, y, k, y_size, z_size);
-                    augmented[row_idx].set_bit(var_idx);
-                }
-
-                if (state[x][y][z])
-                {
-                    augmented[row_idx].set_bit(N, true); 
-                }
-            }
-        }
-    }
-
-    size_t rank = 0;
-    std::vector<size_t> pivot_cols;
-
-    for (size_t col = 0; col < N && rank < N; col++)
-    {
-        if (col % 1000 == 0)
-        {
-            std::cout << "Col: " << col << " from: " << N << std::endl;
-        }
-
-        size_t sel = rank;
-        while (sel < N && !augmented[sel].get_bit(col))
-        {
-            sel++;
-        }
-
-        if (sel == N)
-        {
-            continue;
-        }
-
-        if (sel != rank)
-        {
-            std::swap(augmented[sel], augmented[rank]);
-        }
-
-        pivot_cols.push_back(col);
-
-#pragma omp parallel for schedule(dynamic)
-        for (long long row = 0; row < N; row++)
-        {
-            if (row != rank && augmented[row].get_bit(col))
-            {
-#pragma omp critical
-                {
-                    augmented[row].xor_with(augmented[rank]);
-                }
-            }
-        }
-        rank++;
-    }
-
-    std::vector<bool> clicks(N, false);
-
-    for (int i = rank - 1; i >= 0; i--)
-    {
-        size_t col = pivot_cols[i];
-        bool val = augmented[i].get_bit(N);
-        for (size_t j = col + 1; j < N; j++)
-        {
-            if (augmented[i].get_bit(j))
-            {
-                val ^= clicks[j];
-            }
-        }
-        clicks[col] = val;
-    }
-
     for (uint64_t idx = 0; idx < N; idx++)
     {
         if (clicks[idx])
