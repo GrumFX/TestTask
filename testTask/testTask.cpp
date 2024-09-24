@@ -129,47 +129,6 @@ LockCube::LockCube()
     }
 }
 
-struct BitRow
-{
-    std::vector<uint64_t> bits;
-
-    BitRow(size_t num_bits)
-    {
-        bits.resize((num_bits + 63) / 64, 0);
-    }
-
-    void set_bit(size_t pos)
-    {
-        bits[pos / 64] |= (1ULL << (pos % 64));
-    }
-
-    void set_bit(size_t pos, bool value)
-    {
-        if (value)
-            bits[pos / 64] |= (1ULL << (pos % 64));
-        else
-            bits[pos / 64] &= ~(1ULL << (pos % 64));
-    }
-
-    bool get_bit(size_t pos) const
-    {
-        return (bits[pos / 64] >> (pos % 64)) & 1ULL;
-    }
-
-    void xor_with(const BitRow& other)
-    {
-        for (size_t i = 0; i < bits.size(); ++i)
-        {
-            bits[i] ^= other.bits[i];
-        }
-    }
-};
-
-inline uint64_t coord_to_index(uint64_t x, uint64_t y, uint64_t z, uint64_t y_size, uint64_t z_size)
-{
-    return x * y_size * z_size + y * z_size + z;
-}
-
 void unlock(LockCube& cube)
 {
     auto state = cube.read();
